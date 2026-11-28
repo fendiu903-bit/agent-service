@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import BaseModel, Field, PostgresDsn, SecretStr
+from pydantic import BaseModel, Field, PostgresDsn, SecretStr, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,29 +26,39 @@ class AppSettings(_BaseSettings):
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8001, ge=1, le=65535, alias="APP_PORT")
 
-
 class DatabaseSettings(_BaseSettings):
-    """数据库连接配置。"""
+    """数据库相关设置"""
 
-    db_host: str = Field(default="localhost", alias="DB_HOST")
-    db_port: int = Field(default=5432, ge=1, le=65535, alias="DB_PORT")
-    db_name: str = Field(default="agent_service", alias="DB_NAME")
-    db_user: str = Field(default="postgres", alias="DB_USER")
-    db_password: SecretStr = Field(default="", alias="DB_PASSWORD")
+    host: str = Field(alias="DB_HOST", default="localhost")
+    port: int = Field(alias="DB_PORT", default=5432)
+    name: str = Field(alias="DB_NAME", default="insurance")
+    user: str = Field(alias="DB_USER", default="insurance")
+    password: str = Field(alias="DB_PASSWORD", default="insurance123")
+    echo: bool = Field(alias="DB_ECHO", default=False)
+    pool_size: int = Field(alias="DB_POOL_SIZE", default=5)
+    max_overflow: int = Field(alias="DB_MAX_OVERFLOW", default=10)
+    pool_timeout: int = Field(alias="DB_POOL_TIMEOUT", default=30)
+    pool_recycle: int = Field(alias="DB_POOL_RECYCLE", default=1800)
 
-    def get_database_url(self) -> str:
-        """根据配置生成 PostgreSQL 连接 URL。"""
-        return str(
-            PostgresDsn.build(
-                scheme="postgresql",
-                username=self.db_user,
-                password=self.db_password.get_secret_value(),
-                host=self.db_host,
-                port=self.db_port,
-                path=self.db_name,
-            )
-        )
+    def build_url(self, scheme: str) -> str:
+        return PostgresDsn.build(
+            scheme=scheme,
+            host=self.host,
+            port=self.port,
+            username=self.user,
+            password=self.password,
+            path=self.name,
+        ).encoded_string()
 
+    @computed_field
+    @property
+    def url(self) -> str:
+        return self.build_url("postgresql+asyncpg")
+
+    @computed_field
+    @property
+    def checkpoint_url(self) -> str:
+        return self.build_url("postgresql")
 
 class LLMSettings(_BaseSettings):
     """大语言模型及 API 密钥配置。"""
